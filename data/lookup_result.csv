@@ -1,0 +1,9 @@
+result,type,winner
+AgendaVictory,agenda,corp
+AgendaDefeat,agenda,runner
+DeckDefeat,decked,runner
+DeckVictory,decked,runner
+Flatlined,flatlined,corp
+FlatlineVictory,flatlined,corp
+ConcedeVictory,concede,corp
+Conceded,concede,runner

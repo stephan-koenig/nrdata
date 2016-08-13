@@ -1,0 +1,6 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+output/
+data/OCTGN_stats_anonymized-2015-02-20.csv

@@ -1,0 +1,297 @@
+---
+title: "Data Cleaning of OCTGN Netrunner dataset"
+author: "Stephan Koenig"
+date: "August 8, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Goal
+=====
+
+The provided code prepares the latest [Netrunner OCTGN dataset][1] provided by
+[db0][2] for further analysis.
+
+### Helper functions
+
+```{r helper_functions, echo=FALSE}
+load_packages <- function(required_packages) {
+    # Takes character or character vector of required_packages, installs any
+    # missing packages and only attaches those that are not yet attached.
+    
+    # Check which packages are not installed.
+    missing_packages <- !is.element(required_packages, installed.packages()[,1])
+    missing_packages <- required_packages[missing_packages]
+    
+    # Install missing packages.
+    if (length(missing_packages) != 0) {
+        install.packages(missing_packages)
+        packages <- paste(missing_packages, sep = ", ")
+        system_message(paste("Package(s)", packages, "installed."))
+    }
+    
+    # Check which packages are already loaded.
+    unattached_packages <- !is.element(required_packages, (.packages()))
+    attached_packages <- required_packages[!unattached_packages]
+    unattached_packages <- required_packages[unattached_packages]
+    
+    # Attach any unattached packages.
+    if (length(unattached_packages != 0)) {
+        lapply(unattached_packages, library, character.only = TRUE)
+        packages <- paste(unattached_packages, sep = ", ")
+        system_message(paste("Package(s)", packages, "attached."))
+    }
+    
+    if (length(attached_packages != 0)) {
+        packages <- paste(attached_packages, sep = ", ")
+        system_message(paste("Package(s)", packages, "already attached."))
+    }
+}
+    
+system_message <- function(text) {
+    # Generates system output without quotes.
+    
+    message(noquote(text))
+}
+```
+
+Data Cleaning
+=====
+
+In general, ordered factor levels are assigned to ensure a consitent layout
+for graphs.
+
+### Loading Dataset
+
+```{r load_dataset}
+load_packages("dplyr")
+# Dataset file must be in working directory.
+filename <- "OCTGN_stats_anonymized-2015-02-20.csv"
+nrdata <- tbl_df(read.csv(filename))
+```
+
+### Change of variable names
+
+Rename variables to consistent convention. Reformat game_start as POSIXct,
+convert corp deck size to integer.
+
+```{r renaming_and_drops}
+# Rename variables that are kept.
+load_packages("lubridate")
+nrdata <- rename(nrdata,
+                 corp_player_id = Corp_Player,
+                 runner_player_id = Runner_Player,
+                 game_start = GameStart,
+                 turns_played = Turns_Played,
+                 version = Version,
+                 corp_inf = Corp_Inf,
+                 runner_inf = Runner_Inf,
+                 corp_score = Corp_Score,
+                 runner_score = Runner_Score,
+                 runner_deck_size = Runner_Deck_Size) %>%
+    
+                  # Convert POSIXct.
+           mutate(game_start = ymd_hms(game_start),
+                  # Only keep corp deck sizes legal size 40 or larger.
+                  corp_deck_size = as.integer(Corp_Deck_Size))
+```
+
+### Corp and Runner
+
+Assign the commonly used ID names (mostly card title) as variable and
+separately a  faction variable. Determine any decks that violate inf or 
+deck size limits.
+
+```{r cleaning_corp}
+# Load lookup table for corps (manually curated) and match to OCTGN names.
+lookup_corp <- tbl_df(read.csv("lookup_corp.csv"))
+match_corps <- factor(match(nrdata$Corp_Faction, lookup_corp$octgn_id))
+
+# Look up corp id and faction and order by sequence given in 
+nrdata$corp_id <- factor(lookup_corp$id[match_corps],
+                         levels = lookup_corp$id,
+                         ordered = TRUE)
+                         
+nrdata$corp_faction <- factor(lookup_corp$faction[match_corps],
+                              levels = unique(lookup_corp$faction),
+                              ordered = TRUE)
+
+# Look up deck size and inf limits for corp id and determine if decks are legal.
+nrdata$corp_legal_ds <- lookup_corp$deck_size[match_corps]
+nrdata$corp_legal_ds <- nrdata$corp_deck_size >= nrdata$corp_legal_ds
+
+nrdata$corp_legal_inf <- lookup_corp$inf[match_corps]
+nrdata$corp_legal_inf <- nrdata$corp_inf <= nrdata$corp_legal_inf
+
+rm(lookup_corp, match_corps)
+
+# List changed names.
+nrdata[c("Corp_Faction", "corp_faction", "corp_id")]
+
+# List decks below legal size.
+nrdata[!is.na(nrdata$corp_legal_ds) & !nrdata$corp_legal_ds,
+       c("corp_id", "corp_deck_size", "corp_legal_ds")]
+
+# List decks with too much inf.
+nrdata[!is.na(nrdata$corp_legal_inf) & !nrdata$corp_legal_inf,
+       c("corp_id", "corp_inf", "corp_legal_inf")]
+```
+
+```{r cleaning_runner}
+# Load lookup table for runners (manually curated) and match to OCTGN names.
+lookup_runner <- tbl_df(read.csv("lookup_runner.csv"))
+match_runners <- factor(match(nrdata$Runner_Faction, lookup_runner$octgn_id))
+
+# Look up runner id and faction and order by sequence given in lookup table.
+nrdata$runner_id <- factor(lookup_runner$id[match_runners],
+                           levels = lookup_runner$id,
+                           ordered = TRUE)
+                         
+nrdata$runner_faction <- factor(lookup_runner$faction[match_runners],
+                                levels = unique(lookup_runner$faction),
+                                ordered = TRUE)
+
+# Look up deck size and inf limits for runner id and determine if decks are legal.
+nrdata$runner_legal_ds <- lookup_runner$deck_size[match_runners]
+nrdata$runner_legal_ds <- nrdata$runner_deck_size >= nrdata$runner_legal_ds
+
+nrdata$runner_legal_inf <- lookup_runner$inf[match_runners]
+nrdata$runner_legal_inf <- nrdata$runner_inf <= nrdata$runner_legal_inf
+
+rm(lookup_runner, match_runners)
+
+# List changed names.
+nrdata[c("Runner_Faction", "runner_faction", "runner_id")]
+
+# List decks below legal size.
+nrdata[!is.na(nrdata$runner_legal_ds) & !nrdata$runner_legal_ds,
+       c("runner_id", "runner_deck_size", "runner_legal_ds")]
+
+# List decks with too much inf.
+nrdata[!is.na(nrdata$runner_legal_inf) & !nrdata$runner_legal_inf,
+       c("runner_id", "runner_inf", "runner_legal_inf")]
+```
+
+### Add Release and Cycle
+
+Add information on what cards were most likely supported at the time of the
+game to capture changes in the meta due to new releases.
+
+```{r release_cycle}
+# Set any empty string in version to NA and sort.
+load_packages("naturalsort")
+
+nrdata$version[nrdata$version == ""] <- NA
+nrdata$version <- ordered(nrdata$version,
+                         levels = naturalsort(unique(nrdata$version)))
+
+# Load lookup table for conversion of OCTGN version number to release.
+lookup_octgn <- read.csv("lookup_octgn.csv")
+
+# Convert version to release.
+nrdata$release <- match(nrdata$version, lookup_octgn$version)
+nrdata$release <- factor(lookup_octgn$release[nrdata$version],
+                         levels = unique(lookup_octgn$release),
+                         ordered = TRUE)
+
+# Load lookup table for conversion of release to cycle.
+lookup_release <- read.csv("lookup_release.csv")
+
+# Convert release to cycle.
+nrdata$cycle <- match(nrdata$release, lookup_release$release)
+nrdata$cycle <- factor(lookup_release$cycle[nrdata$cycle],
+                       levels = unique(lookup_release$cycle),
+                       ordered = TRUE)
+
+rm(lookup_octgn, lookup_release)
+
+# Show added data.
+unique(nrdata[!is.na(nrdata$version) & nrdata$cycle == "Lunar",
+              c("version", "release", "cycle")])
+```
+
+### Match Result
+
+Convert result variable into one of four win types ("agenda", "concede",
+"decked", "flatlined") and a winning side.
+
+```{r result}
+# Load lookup table for conversion of result.
+lookup_result <- read.csv("lookup_result.csv")
+
+# Convert result into win type and winner.
+nrdata$winner <- nrdata$win_type <- match(nrdata$Result, lookup_result$result)
+nrdata$winner <- factor(lookup_result$winner[nrdata$winner],
+                        levels = unique(lookup_result$winner),
+                        ordered = TRUE)
+nrdata$win_type <- factor(lookup_result$type[nrdata$win_type],
+                          levels = unique(lookup_result$type),
+                          ordered = TRUE)
+
+rm(lookup_result)
+
+# Show reformatted results.
+unique(nrdata[c("Result", "winner", "win_type")])
+```
+
+### Subset legal games
+
+```{r illegal_games}
+system_message(paste("Length complete data set:", dim(nrdata)[1]))
+
+# Only keep games with regular duration.
+legal <- nrdata$Duration %in% 0:120
+
+# Only keep games within regular score range.
+legal <- legal &
+         nrdata$corp_score %in% 0:12 &
+         nrdata$runner_score %in% -3:24
+
+# Only keep games with legal decks.
+legal <- legal &
+         nrdata$corp_legal_ds & nrdata$corp_legal_inf &
+         nrdata$runner_legal_ds & nrdata$runner_legal_inf
+
+nrdata <- nrdata[legal, ]
+
+rm(legal)
+
+system_message(paste("Length legal games data set:", dim(nrdata)[1]))
+```
+
+### Final variable selection
+
+Only relevant variables for plotting are kept and the final data set is saved
+as an R object.
+
+```{r variable_subsetting}
+nrdata <- select(nrdata,
+                 game_start,
+                 version,
+                 cycle,
+                 release,
+                 corp_player_id,
+                 corp_faction,
+                 corp_id,
+                 corp_deck_size,
+                 corp_inf,
+                 runner_player_id,
+                 runner_faction,
+                 runner_id,
+                 runner_deck_size,
+                 runner_inf,
+                 turns_played,
+                 winner,
+                 win_type,
+                 corp_score,
+                 runner_score)
+
+save(nrdata, file = "nrdata.RData")
+```
+
+
+[1]: https://docs.google.com/uc?export=download&confirm=qg-_&id=0B-gMiPlH3rBAcmZmVnhNLU5wVEE
+[2]: http://dbzer0.com/
