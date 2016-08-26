@@ -4,3 +4,5 @@
 .Ruserdata
 output/
 data/OCTGN_stats_anonymized-2015-02-20.csv
+data/export.zip
+data/export/

@@ -1,0 +1,226 @@
+---
+title: "The Shifting Meta"
+author: "Stephan Koenig"
+date: "August 8, 2016"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This R Markdown document is made interactive using Shiny. Unlike the more
+traditional workflow of creating static reports, you can now create documents
+that allow your readers to change the assumptions underlying your analysis and
+see the results immediately. 
+
+To learn more, see [Interactive Documents](http://rmarkdown.rstudio.com/authoring_shiny.html).
+
+## Inputs and Outputs
+
+You can embed Shiny inputs and outputs in your document. Outputs are
+automatically updated whenever inputs change.  This demonstrates how a standard
+R plot can be made interactive by wrapping it in the Shiny `renderPlot`
+function. The `selectInput` and `sliderInput` functions create the input
+widgets used to drive the plot.
+
+```{r eruptions, echo=FALSE}
+inputPanel(
+  selectInput("n_breaks", label = "Number of bins:",
+              choices = c(10, 20, 35, 50), selected = 20),
+  
+  sliderInput("bw_adjust", label = "Bandwidth adjustment:",
+              min = 0.2, max = 2, value = 1, step = 0.2)
+)
+
+renderPlot({
+  hist(faithful$eruptions, probability = TRUE, breaks = as.numeric(input$n_breaks),
+       xlab = "Duration (minutes)", main = "Geyser eruption duration")
+  
+  dens <- density(faithful$eruptions, adjust = input$bw_adjust)
+  lines(dens, col = "blue")
+})
+```
+
+## Embedded Application
+
+It's also possible to embed an entire Shiny application within an R Markdown
+document using the `shinyAppDir` function. This example embeds a Shiny
+application located in another directory:
+
+```{r tabsets, echo=FALSE}
+shinyAppDir(
+  system.file("examples/06_tabsets", package = "shiny"),
+  options = list(
+    width = "100%", height = 550
+  )
+)
+```
+
+Note the use of the `height` parameter to determine how much vertical space the
+embedded application should occupy.
+
+You can also use the `shinyApp` function to define an application inline rather
+then in an external directory.
+
+In all of R code chunks above the `echo = FALSE` attribute is used. This is to
+prevent the R code within the chunk from rendering in the document alongside
+the Shiny components.
+
+
+
+
+
+
+
+```{r exploration, echo=FALSE}
+library(dplyr)
+library(ggplot2)
+
+load("nrdata.RData")
+
+ggplot(nrdata, aes(win_type, turns_played)) +
+       geom_boxplot()
+
+by(nrdata$turns_played, nrdata$win_type, summary)
+summary(nrdata$runner_score[nrdata$win_type == "agenda" &
+                            nrdata$winner == "runner"])
+ggplot(nrdata[nrdata$win_type == "agenda" & nrdata$winner == "corp", ],
+       aes(turns_played - 10)) +
+    geom_histogram(binwidth = 1, boundary = 0)
+
+```
+
+
+```{r graph_results}
+plot_that_stuff <- function(pack, myfilename) {
+    
+    alpha_value <- 0.8
+    
+    pack_data <- filter(nrdata, release == pack)
+    
+    all_ids <- nrdata %>%
+        group_by(corp_id, runner_id) %>% 
+        summarize(total = n()) %>%
+        select(corp_id, runner_id) %>% ungroup()
+    
+    total_games <- pack_data %>%
+        group_by(corp_id, runner_id) %>% 
+        summarize(total = n()) %>% ungroup() %>%
+        arrange(corp_id, runner_id)
+    
+    corp_wins <- pack_data %>%
+        filter(winner == "corp") %>%
+        group_by(corp_id, runner_id) %>%
+        summarize(corp_wins = n()) %>% ungroup()
+    
+    corp_wins <- full_join(corp_wins, all_ids, by = c("corp_id", "runner_id"))
+        
+    corp_wins[is.na(corp_wins$corp_wins), "corp_wins"] <- 0
+    
+    corp_wins <- ungroup(corp_wins) %>% arrange(corp_id, runner_id)
+    
+    all_games <- sum(total_games$total)
+    
+    combined <- full_join(total_games, corp_wins, by = c("corp_id", "runner_id"))
+    
+    combined <- mutate(combined, corp_percent = corp_wins/total * 100,
+                       percent = total/all_games * 100)
+
+    ggplot(combined, aes(runner_id, corp_id,
+                         size = percent,
+                         colour = corp_percent)) +
+        geom_point(alpha = alpha_value, na.rm = TRUE) +
+        scale_size_area(limits = c(0,10),
+                        name = "Matchup freq [%]") +
+        labs(title = pack,
+             x = "Runner", y = "Corp") +
+        scale_colour_gradient2(low = "Red", high = "Blue", mid = "grey97",
+                              midpoint = 50, na.value = "grey95",
+                              limits = c(0,100),
+                              name = "Corp win [%]") +
+        theme_bw() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1),
+              axis.ticks = element_blank(),
+              panel.background = element_blank(),
+              panel.border = element_blank(),
+              panel.grid.major = element_line(colour = "grey95"),
+              legend.key = element_rect(colour = NA)) +
+              guides(colour = guide_legend(override.aes = list(alpha = alpha_value)))
+        ggsave(paste0("~/Downloads/", myfilename),
+               width=8, height=6)
+}
+```
+
+```{r graph_single}
+# pack <- data_packs[14]
+# mapply(plot_that_stuff, pack, "test.jpg")
+```
+
+```{r graph_multiple}
+data_packs <- sort(unique(nrdata$release))
+filenames <- unlist(lapply(1:19, paste0, ".pdf"))
+
+mapply(plot_that_stuff, data_packs, filenames)
+```
+
+### The Shifting Meta
+
+I wanted to practice data analysis in R and decided to take closer look at the
+last OCTGN data set that was made available in Feb 2015 thanks to db0.
+
+Here the first preliminary graph that shows a global view of the meta over time,
+i.e. changes with each new release (from Trace Amount to The Source):
+
+* Each frame is a snap shot of the meta for a specific RELEASE (indicated in
+the title) of all players on OCTGN.
+* Each column is a single RUNNER.
+* Each row is a single CORP.
+* Each circle represents the specific matchup between the runner and the corp
+of the intersection (e.g. NEH vs. Andromeda).
+* The size of each circle indicates MATCHUP FREQUENCY during a specific release (i.e number of games of a specific matchup divided by total number of games).
+* The color of each circle represents the CORP WIN RATE of that matchup during a specific release, with light grey representing 50% (i.e split), shades of blue > 50%
+(i.e. favorably for corp), and shades of red a corp win rate < 50% (i.e.
+favorably for runner).
+
+Here some general guidelines on how to interpret the graph:
+
+1. If a lot of circles in a single row are large then the corresponding corp is
+popular.
+1. If a lot of circles in a single row are blue then the corp is successful.
+1. Correspondingly, large, red circles in a single column indicate a popular and
+succesful runner.
+1. If a lot of circles in all rows and columns are blue then corps dominate
+the meta, if red then runners.
+
+Some stray observations:
+
+* Newly released IDs are initally popular.
+* Notice how the "Stronger Together" row is mostly red? Always.
+* The meta drastically shifts blue when Honor and Profit is released.
+* After its release, NEH surges while MN and TWIY decline.
+
+The next goals for further analysis are:
+* Getting data for later releases.
+* Implement interactive graphs (e.g. a slider to manually switch between
+releases, look only at the top 25% of players).
+
+What trends and patterns do you see in the data? What parameters would you like
+to explore? Please let me know any feedback in the comments!
+
+![](the_shifting_meta.gif)
+
+```{r} 
+## To show groups with 0 members.
+# df <- data.frame(
+#   "ID"   = rep(1:2, each = 2),
+#   "Col1" = c("A", NA, "AA", NA),
+#   "Col2" = c("B", "C", "BB", "CC"))
+# 
+# df %>% 
+#  group_by(ID) %>% 
+#  do(complete(., Col1, Col2, fill = list(ID = .$ID)))
+```
+
+

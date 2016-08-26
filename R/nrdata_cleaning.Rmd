@@ -15,49 +15,6 @@ Goal
 The provided code prepares the latest [Netrunner OCTGN dataset][1] provided by
 [db0][2] for further analysis.
 
-### Helper functions
-
-```{r helper_functions, echo=FALSE}
-load_packages <- function(required_packages) {
-    # Takes character or character vector of required_packages, installs any
-    # missing packages and only attaches those that are not yet attached.
-    
-    # Check which packages are not installed.
-    missing_packages <- !is.element(required_packages, installed.packages()[,1])
-    missing_packages <- required_packages[missing_packages]
-    
-    # Install missing packages.
-    if (length(missing_packages) != 0) {
-        install.packages(missing_packages)
-        packages <- paste(missing_packages, sep = ", ")
-        system_message(paste("Package(s)", packages, "installed."))
-    }
-    
-    # Check which packages are already loaded.
-    unattached_packages <- !is.element(required_packages, (.packages()))
-    attached_packages <- required_packages[!unattached_packages]
-    unattached_packages <- required_packages[unattached_packages]
-    
-    # Attach any unattached packages.
-    if (length(unattached_packages != 0)) {
-        lapply(unattached_packages, library, character.only = TRUE)
-        packages <- paste(unattached_packages, sep = ", ")
-        system_message(paste("Package(s)", packages, "attached."))
-    }
-    
-    if (length(attached_packages != 0)) {
-        packages <- paste(attached_packages, sep = ", ")
-        system_message(paste("Package(s)", packages, "already attached."))
-    }
-}
-    
-system_message <- function(text) {
-    # Generates system output without quotes.
-    
-    message(noquote(text))
-}
-```
-
 Data Cleaning
 =====
 
@@ -72,6 +29,18 @@ load_packages("dplyr")
 filename <- "OCTGN_stats_anonymized-2015-02-20.csv"
 nrdata <- tbl_df(read.csv(filename))
 ```
+
+### Anonymize data set
+
+```{r}
+library(digest)
+
+# INCLUDE PROMPT FOR PASSWORD.
+password <- "my_very_long_password_1234" # to be changed each time
+data$raw_id <- paste(data$raw_id, password)
+data$id <- sapply(data$raw_id, function(X) digest(X, algo="sha1"))
+```
+
 
 ### Change of variable names
 
@@ -254,6 +223,10 @@ legal <- legal &
 legal <- legal &
          nrdata$corp_legal_ds & nrdata$corp_legal_inf &
          nrdata$runner_legal_ds & nrdata$runner_legal_inf
+
+# Only keep games with release information.
+legal <- legal &
+         !is.na(nrdata$release)
 
 nrdata <- nrdata[legal, ]
 
