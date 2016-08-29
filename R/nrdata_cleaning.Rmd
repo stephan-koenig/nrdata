@@ -24,9 +24,9 @@ for graphs.
 ### Loading Dataset
 
 ```{r load_dataset}
-load_packages("dplyr")
+library("dplyr")
 # Dataset file must be in working directory.
-filename <- "OCTGN_stats_anonymized-2015-02-20.csv"
+filename <- "data/OCTGN_stats_anonymized-2015-02-20.csv"
 nrdata <- tbl_df(read.csv(filename))
 ```
 
@@ -47,9 +47,9 @@ data$id <- sapply(data$raw_id, function(X) digest(X, algo="sha1"))
 Rename variables to consistent convention. Reformat game_start as POSIXct,
 convert corp deck size to integer.
 
-```{r renaming_and_drops}
+```{r renaming}
 # Rename variables that are kept.
-load_packages("lubridate")
+library("lubridate")
 nrdata <- rename(nrdata,
                  corp_player_id = Corp_Player,
                  runner_player_id = Runner_Player,
@@ -76,7 +76,7 @@ deck size limits.
 
 ```{r cleaning_corp}
 # Load lookup table for corps (manually curated) and match to OCTGN names.
-lookup_corp <- tbl_df(read.csv("lookup_corp.csv"))
+lookup_corp <- tbl_df(read.csv("data/lookup_corp.csv"))
 match_corps <- factor(match(nrdata$Corp_Faction, lookup_corp$octgn_id))
 
 # Look up corp id and faction and order by sequence given in 
@@ -111,7 +111,7 @@ nrdata[!is.na(nrdata$corp_legal_inf) & !nrdata$corp_legal_inf,
 
 ```{r cleaning_runner}
 # Load lookup table for runners (manually curated) and match to OCTGN names.
-lookup_runner <- tbl_df(read.csv("lookup_runner.csv"))
+lookup_runner <- tbl_df(read.csv("data/lookup_runner.csv"))
 match_runners <- factor(match(nrdata$Runner_Faction, lookup_runner$octgn_id))
 
 # Look up runner id and faction and order by sequence given in lookup table.
@@ -151,14 +151,14 @@ game to capture changes in the meta due to new releases.
 
 ```{r release_cycle}
 # Set any empty string in version to NA and sort.
-load_packages("naturalsort")
+library("naturalsort")
 
 nrdata$version[nrdata$version == ""] <- NA
 nrdata$version <- ordered(nrdata$version,
                          levels = naturalsort(unique(nrdata$version)))
 
 # Load lookup table for conversion of OCTGN version number to release.
-lookup_octgn <- read.csv("lookup_octgn.csv")
+lookup_octgn <- read.csv("data/lookup_octgn.csv")
 
 # Convert version to release.
 nrdata$release <- match(nrdata$version, lookup_octgn$version)
@@ -167,7 +167,7 @@ nrdata$release <- factor(lookup_octgn$release[nrdata$version],
                          ordered = TRUE)
 
 # Load lookup table for conversion of release to cycle.
-lookup_release <- read.csv("lookup_release.csv")
+lookup_release <- read.csv("data/lookup_release.csv")
 
 # Convert release to cycle.
 nrdata$cycle <- match(nrdata$release, lookup_release$release)
@@ -189,7 +189,7 @@ Convert result variable into one of four win types ("agenda", "concede",
 
 ```{r result}
 # Load lookup table for conversion of result.
-lookup_result <- read.csv("lookup_result.csv")
+lookup_result <- read.csv("data/lookup_result.csv")
 
 # Convert result into win type and winner.
 nrdata$winner <- nrdata$win_type <- match(nrdata$Result, lookup_result$result)
@@ -209,6 +209,7 @@ unique(nrdata[c("Result", "winner", "win_type")])
 ### Subset legal games
 
 ```{r illegal_games}
+source("R/system_message.R")
 system_message(paste("Length complete data set:", dim(nrdata)[1]))
 
 # Only keep games with regular duration.
@@ -262,7 +263,7 @@ nrdata <- select(nrdata,
                  corp_score,
                  runner_score)
 
-save(nrdata, file = "nrdata.RData")
+save(nrdata, file = "output/nrdata.RData")
 ```
 
 

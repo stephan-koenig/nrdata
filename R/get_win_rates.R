@@ -13,52 +13,38 @@
 
 get_win_rates <- function() {
   # CHECK IF NRDATA IS PRESENT, IF NOT...
-  load("nrdata.RData")
+  load("output/nrdata.RData")
 
-  # Remove any entries with NA's for release.
-  ### REMOVE AFTER DATA CLEANING IS FIXED!!!!
-  nrdata <- nrdata %>%
-    filter(!is.na(release))
-
+  # Create a table with all possible combinations of corp, runner, and release.
   corps <- levels(nrdata$corp_id)
   runners <- levels(nrdata$runner_id)
   releases <- levels(nrdata$release)
+  full_set <- tbl_df(expand.grid(corps, runners, releases))
+  names(full_set) <- c("corp_id", "runner_id", "release")
 
-  # Determine total number of games for each matchup during each release.
+  # Determine total number of games and corp win reate for each matchup during
+  # each release.
   matchup <- nrdata %>%
     group_by(corp_id, runner_id, release) %>%
-    summarize(matchup_games = n()) %>%
+    summarize(matchup_games = n(),
+              corp_win_rate = sum(winner == "corp") / n() * 100) %>%
     ungroup()
 
   # Calculate total number of games by release.
-  release <- matchup %>%
+  release <- nrdata %>%
     group_by(release) %>%
-    summarize(release_games = sum(matchup_games)) %>%
-    ungroup()
+    summarize(release_games = n())
 
-  # Determine corp wins for each matchup during each release.
-  corp_wins <- nrdata %>%
-    filter(winner == "corp") %>%
-    group_by(corp_id, runner_id, release) %>%
-    summarize(corp_wins = n()) %>%
-    ungroup()
+  # Combine all derived variables.
+  combined <- full_join(matchup, release, by = "release")
 
-  combined <- full_join(matchup, corp_wins,
-                        by = c("corp_id", "runner_id", "release"))
-
-  combined <- full_join(combined, release, by = "release")
-
-  # Replace corp_wins NA's with 0.
+  # Replace corp_win_rate NA's with 0.
   combined <- combined %>%
-    mutate(corp_wins = replace(corp_wins, which(is.na(corp_wins)), 0),
-           corp_wins_percent = corp_wins/matchup_games * 100,
-           matchup_freq = matchup_games/release_games * 100)
+    mutate(matchup_freq = matchup_games / release_games * 100)
 
   # Ensure that a complete set of all corp, runner, release combinations are
   # represented.
-  full_set <- tbl_df(expand.grid(corps, runners, releases))
-  names(full_set) <- c("corp_id", "runner_id", "release")
   combined <- right_join(combined, full_set,
                          by = c("corp_id", "runner_id", "release"))
-  save(combined, file = "combined.RData")
+  save(combined, file = "output/combined.RData")
 }
